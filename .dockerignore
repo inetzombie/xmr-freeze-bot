@@ -1,0 +1,5 @@
+.git
+*.sqlite3
+*.db
+.env*
+tests/
