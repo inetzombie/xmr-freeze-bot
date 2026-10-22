@@ -1,0 +1,338 @@
+{
+  "db_path": "freezebot.sqlite3",
+  "poll_interval_seconds": 60,
+  "min_amount": 1,
+  "chains": [
+    {
+      "name": "ethereum",
+      "type": "evm",
+      "rpc_urls": [
+        "https://gateway.tenderly.co/public/mainnet",
+        "https://rpc.mevblocker.io"
+      ],
+      "rpc_env": "ETH_RPC_URL",
+      "explorer_tx": "https://etherscan.io/tx/{tx}",
+      "confirmations": 6,
+      "max_block_range": 5000,
+      "start_lookback_blocks": 7200,
+      "tokens": [
+        {
+          "symbol": "USDT",
+          "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+          "decimals": 6,
+          "events": [
+            {
+              "name": "AddedBlackList",
+              "kind": "freeze",
+              "topic0": "0x42e160154868087d6bfdc0ca23d96a1c1cfa32f1b72ba9ba27b69b98a0d819dc",
+              "address_in": "data",
+              "post": true
+            },
+            {
+              "name": "DestroyedBlackFunds",
+              "kind": "destroy",
+              "topic0": "0x61e6e66b0d6339b2980aecc6ccc0039736791f0ccde9ed512e789a7fbdd698c6",
+              "address_in": "data",
+              "amount_in": "data",
+              "post": false
+            }
+          ]
+        },
+        {
+          "symbol": "USDC",
+          "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "decimals": 6,
+          "events": [
+            {
+              "name": "Blacklisted",
+              "kind": "freeze",
+              "topic0": "0xffa4e6181777692565cf28528fc88fd1516ea86b56da075235fa575af6a4b855",
+              "address_in": "topic1",
+              "post": true
+            }
+          ]
+        },
+        {
+          "symbol": "PYUSD",
+          "address": "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8",
+          "decimals": 6,
+          "events": [
+            {
+              "name": "AddressFrozen",
+              "kind": "freeze",
+              "topic0": "0x90811a8edd3b3c17eeaefffc17f639cc69145d41a359c9843994dc2538203690",
+              "address_in": "topic1",
+              "post": true
+            },
+            {
+              "name": "FrozenAddressWiped",
+              "kind": "destroy",
+              "topic0": "0xfc5960f1c5a5d2b60f031bf534af053b1bf7d9881989afaeb8b1d164db23aede",
+              "address_in": "topic1",
+              "post": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "arbitrum",
+      "type": "evm",
+      "rpc_urls": [
+        "https://arbitrum.gateway.tenderly.co",
+        "https://arb1.arbitrum.io/rpc"
+      ],
+      "rpc_env": "ARBITRUM_RPC_URL",
+      "explorer_tx": "https://arbiscan.io/tx/{tx}",
+      "confirmations": 40,
+      "max_block_range": 500000,
+      "start_lookback_blocks": 345600,
+      "tokens": [
+        {
+          "symbol": "USDT",
+          "address": "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
+          "decimals": 6,
+          "events": [
+            {
+              "name": "BlockPlaced",
+              "kind": "freeze",
+              "topic0": "0x406bbf2d8d145125adf1198d2cf8a67c66cc4bb0ab01c37dccd4f7c0aae1e7c7",
+              "address_in": "topic1",
+              "post": true
+            },
+            {
+              "name": "DestroyedBlockedFunds",
+              "kind": "destroy",
+              "topic0": "0x6a2859ae7902313752498feb80a014e6e7275fe964c79aa965db815db1c7f1e9",
+              "address_in": "topic1",
+              "amount_in": "data",
+              "post": false
+            }
+          ]
+        },
+        {
+          "symbol": "USDC",
+          "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+          "decimals": 6,
+          "events": [
+            {
+              "name": "Blacklisted",
+              "kind": "freeze",
+              "topic0": "0xffa4e6181777692565cf28528fc88fd1516ea86b56da075235fa575af6a4b855",
+              "address_in": "topic1",
+              "post": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "base",
+      "type": "evm",
+      "rpc_urls": [
+        "https://base.gateway.tenderly.co",
+        "https://base-rpc.publicnode.com",
+        "https://mainnet.base.org"
+      ],
+      "rpc_env": "BASE_RPC_URL",
+      "explorer_tx": "https://basescan.org/tx/{tx}",
+      "confirmations": 10,
+      "max_block_range": 1000,
+      "start_lookback_blocks": 43200,
+      "tokens": [
+        {
+          "symbol": "USDC",
+          "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "decimals": 6,
+          "events": [
+            {
+              "name": "Blacklisted",
+              "kind": "freeze",
+              "topic0": "0xffa4e6181777692565cf28528fc88fd1516ea86b56da075235fa575af6a4b855",
+              "address_in": "topic1",
+              "post": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "polygon",
+      "type": "evm",
+      "rpc_urls": [
+        "https://polygon.gateway.tenderly.co",
+        "https://polygon-bor-rpc.publicnode.com"
+      ],
+      "rpc_env": "POLYGON_RPC_URL",
+      "explorer_tx": "https://polygonscan.com/tx/{tx}",
+      "confirmations": 64,
+      "max_block_range": 100000,
+      "start_lookback_blocks": 43200,
+      "tokens": [
+        {
+          "symbol": "USDT",
+          "address": "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+          "decimals": 6,
+          "events": [
+            {
+              "name": "BlockPlaced",
+              "kind": "freeze",
+              "topic0": "0x406bbf2d8d145125adf1198d2cf8a67c66cc4bb0ab01c37dccd4f7c0aae1e7c7",
+              "address_in": "topic1",
+              "post": true
+            },
+            {
+              "name": "DestroyedBlockedFunds",
+              "kind": "destroy",
+              "topic0": "0x6a2859ae7902313752498feb80a014e6e7275fe964c79aa965db815db1c7f1e9",
+              "address_in": "topic1",
+              "amount_in": "data",
+              "post": false
+            }
+          ]
+        },
+        {
+          "symbol": "USDC",
+          "address": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+          "decimals": 6,
+          "events": [
+            {
+              "name": "Blacklisted",
+              "kind": "freeze",
+              "topic0": "0xffa4e6181777692565cf28528fc88fd1516ea86b56da075235fa575af6a4b855",
+              "address_in": "topic1",
+              "post": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "avalanche",
+      "type": "evm",
+      "rpc_urls": [
+        "https://avalanche.gateway.tenderly.co",
+        "https://avalanche-c-chain-rpc.publicnode.com"
+      ],
+      "rpc_env": "AVALANCHE_RPC_URL",
+      "explorer_tx": "https://snowtrace.io/tx/{tx}",
+      "confirmations": 10,
+      "max_block_range": 100000,
+      "start_lookback_blocks": 43200,
+      "tokens": [
+        {
+          "symbol": "USDT",
+          "address": "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7",
+          "decimals": 6,
+          "events": [
+            {
+              "name": "BlockPlaced",
+              "kind": "freeze",
+              "topic0": "0x406bbf2d8d145125adf1198d2cf8a67c66cc4bb0ab01c37dccd4f7c0aae1e7c7",
+              "address_in": "topic1",
+              "post": true
+            },
+            {
+              "name": "DestroyedBlockedFunds",
+              "kind": "destroy",
+              "topic0": "0x6a2859ae7902313752498feb80a014e6e7275fe964c79aa965db815db1c7f1e9",
+              "address_in": "topic1",
+              "amount_in": "data",
+              "post": false
+            }
+          ]
+        },
+        {
+          "symbol": "USDC",
+          "address": "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
+          "decimals": 6,
+          "events": [
+            {
+              "name": "Blacklisted",
+              "kind": "freeze",
+              "topic0": "0xffa4e6181777692565cf28528fc88fd1516ea86b56da075235fa575af6a4b855",
+              "address_in": "topic1",
+              "post": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "tron",
+      "type": "tron",
+      "api_url": "https://api.trongrid.io",
+      "api_key_env": "TRONGRID_API_KEY",
+      "explorer_tx": "https://tronscan.org/#/transaction/{tx}",
+      "start_lookback_hours": 24,
+      "tokens": [
+        {
+          "symbol": "USDT",
+          "address": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+          "decimals": 6,
+          "events": [
+            {
+              "name": "AddedBlackList",
+              "kind": "freeze",
+              "post": true
+            },
+            {
+              "name": "DestroyedBlackFunds",
+              "kind": "destroy",
+              "post": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "solana",
+      "type": "solana",
+      "rpc_env": "SOLANA_RPC_URL",
+      "rpc_urls": [
+        "https://api.mainnet-beta.solana.com"
+      ],
+      "explorer_tx": "https://solscan.io/tx/{tx}",
+      "start_lookback_slots": 216000,
+      "request_delay": 0.12,
+      "usd_threshold": 1000,
+      "allowlist": [
+        {
+          "symbol": "USDC",
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "decimals": 6
+        },
+        {
+          "symbol": "USDT",
+          "mint": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+          "decimals": 6
+        },
+        {
+          "symbol": "PYUSD",
+          "mint": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+          "decimals": 6
+        },
+        {
+          "symbol": "USDG",
+          "mint": "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH",
+          "decimals": 6
+        }
+      ],
+      "extra_watch_addresses": []
+    }
+  ],
+  "outputs": {
+    "stdout": {
+      "enabled": true
+    },
+    "nostr": {
+      "enabled": false
+    },
+    "mastodon": {
+      "enabled": false
+    },
+    "telegram": {
+      "enabled": false
+    }
+  }
+}
