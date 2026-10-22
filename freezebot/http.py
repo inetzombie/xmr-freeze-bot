@@ -4,7 +4,7 @@ import time
 import urllib.error
 import urllib.request
 
-USER_AGENT = "xmr-freeze-bot/0.2 (+https://getmonero.org)"
+USER_AGENT = "xmr-freeze-bot/0.3 (+https://getmonero.org)"
 
 
 class HTTPError(Exception):
