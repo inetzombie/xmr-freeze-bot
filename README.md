@@ -8,7 +8,7 @@ in the format requested by [Monero bounty #99](https://bounties.monero.social/po
 https://etherscan.io/tx/0xa8dafd10f768b389e069306cdea66b84243253f8ce6b129f5d9170a9e1243c2f
 ```
 
-Status: **v0.2**. Detection on 7 chains, amounts, dedupe and stdout output work. Social posting adapters are stubs.
+Status: **v0.3**. Detection on 7 chains, amounts, dedupe, stdout and **Telegram** output work. Nostr and Mastodon posting are still stubs.
 
 ## What it watches
 
@@ -93,15 +93,44 @@ Everything is in `config.json`. Optional environment variables (see `.env.exampl
 - `ARBITRUM_RPC_URL`, `BASE_RPC_URL`, `POLYGON_RPC_URL`, `AVALANCHE_RPC_URL`: preferred RPC per chain
 - `SOLANA_RPC_URL`, `HELIUS_API_KEY` or `HELIUS_API_KEY_FILE` (path to a file holding the key): optional Solana RPC
 - Output adapter credentials: `NOSTR_NSEC`, `NOSTR_RELAYS`, `MASTODON_BASE_URL`, `MASTODON_ACCESS_TOKEN`,
-  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+  `TELEGRAM_BOT_TOKEN` (or `TELEGRAM_BOT_TOKEN_FILE`, a path to a file holding the token), `TELEGRAM_CHAT_ID`
 
 Credentials are only ever read from the environment. Nothing secret belongs in the repo or the image.
 
 ## Outputs
 
-Only `stdout` is enabled by default. Nostr, Mastodon and Telegram adapters exist as stubs that load their
-credentials from the environment. Without `--live` they only log what they would post; with `--live` they currently
-raise "not implemented".
+Only `stdout` is enabled by default. The **Telegram** adapter is fully implemented; Nostr and Mastodon remain
+stubs that load their credentials from the environment. Without `--live` every non-stdout adapter only logs what it
+would post (dry-run). With `--live`, the Telegram adapter actually posts; the stubs still raise "not implemented".
+If `--live` is set but an enabled adapter is missing its credentials, the bot exits immediately with a clear error
+(it never posts a partial run).
+
+### Running the Telegram feed
+
+The Telegram adapter posts each composed message to a channel via the Bot API `sendMessage`. The message text is
+sent exactly as shown above (the `… should have gone through #Monero $XMR …` line plus the explorer link), with the
+link preview disabled to keep the channel clean. It self-limits to about one message per second and honours a `429`
+`retry_after` from Telegram.
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and get its token. Add the bot to your channel as an admin.
+2. Provide the token **without committing it** — either set `TELEGRAM_BOT_TOKEN`, or put the token in a file and point
+   `TELEGRAM_BOT_TOKEN_FILE` at it:
+
+   ```sh
+   export TELEGRAM_BOT_TOKEN_FILE=/path/to/secret/telegram_token   # file contains only the token
+   export TELEGRAM_CHAT_ID=@YourChannel                            # or a numeric -100... id
+   ```
+3. Enable the adapter in `config.json` (`"telegram": { "enabled": true }`). Optional per-adapter settings:
+   `"min_interval"` (seconds between messages, default `1.05`) and `"disable_web_page_preview"` (default `true`).
+4. Dry-run first (no `--live`) to see exactly what would be posted, then go live:
+
+   ```sh
+   python -m freezebot --once --chain ethereum                     # dry-run: logs "[dry-run] telegram would post: …"
+   python -m freezebot --once --chain ethereum --live              # actually posts to the channel
+   ```
+
+The token is only ever read from the environment or the `*_FILE` path at runtime, and is never written to logs,
+config, or the repo.
 
 ## Tests
 
@@ -122,7 +151,7 @@ The Solana test runs without a key on the public RPC.
 
 ## Roadmap
 
-1. Implement the Nostr (NIP-01 kind-1), Mastodon and Telegram channel posters.
+1. Implement the Nostr (NIP-01 kind-1) and Mastodon posters (the Telegram channel poster is done).
 2. Solana: optional whole-network freeze discovery (block subscription or a Helius webhook) for non-allow-listed tokens.
 3. More issuers and chains (FDUSD, EURC, Optimism, ...) as config entries.
 4. Daily digest, public JSON/CSV archive and a `/status` page.

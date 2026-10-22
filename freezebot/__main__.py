@@ -82,6 +82,14 @@ def main(argv=None):
         p.error("--from-block needs exactly one --chain")
     store = Store(a.db or cfg["db_path"])
     outputs = build_outputs(cfg["outputs"], live=a.live)
+    if a.live:
+        unconfigured = [o for o in outputs if not o.configured]
+        if unconfigured:
+            for o in unconfigured:
+                need = o._missing() if hasattr(o, "_missing") else list(o.env_vars)
+                log.error("--live set but '%s' output is not configured; set: %s",
+                          o.name, ", ".join(need))
+            return 2
     min_amount = cfg.get("min_amount", 1)
     watchers = [make_watcher(c) for c in chains]
 
