@@ -11,10 +11,13 @@ from .fmt import format_message
 from .outputs import build_outputs
 from .store import Store
 from .solana import SolanaWatcher
+from .stellar import StellarWatcher, ledger_cursor
 from .tron import TronWatcher
+from .xrpl import XrplWatcher
 
 log = logging.getLogger("freezebot")
-WATCHERS = {"evm": EvmWatcher, "tron": TronWatcher, "solana": SolanaWatcher}
+WATCHERS = {"evm": EvmWatcher, "tron": TronWatcher, "solana": SolanaWatcher,
+            "stellar": StellarWatcher, "xrpl": XrplWatcher}
 
 
 def make_watcher(chain_cfg):
@@ -68,7 +71,7 @@ def main(argv=None):
     p.add_argument("--config", default="config.json")
     p.add_argument("--db", help="override db_path")
     p.add_argument("--chain", action="append", help="only these chains (repeatable)")
-    p.add_argument("--from-block", type=int, help="backfill start block, or slot on Solana (requires one --chain)")
+    p.add_argument("--from-block", type=int, help="backfill start block (slot on Solana, ledger on Stellar/XRPL; requires one --chain)")
     p.add_argument("--to-block", type=int, help="backfill end block (default: head)")
     p.add_argument("--once", action="store_true", help="one pass then exit")
     p.add_argument("--live", action="store_true", help="allow non-stdout adapters to post (default: dry-run)")
@@ -100,10 +103,14 @@ def main(argv=None):
         if isinstance(w, TronWatcher):  # Tron cursor is a timestamp
             fc = w.block_to_cursor(a.from_block)
             tc = w.block_to_cursor(to_b) + 2999 if to_b is not None else None
+        elif isinstance(w, StellarWatcher):  # Stellar cursor is a Horizon paging token
+            fc = ledger_cursor(a.from_block)
+            tc = ledger_cursor(to_b + 1) - 1 if to_b is not None else None
         counts = run_chain(w, store, outputs, min_amount, fc, tc if tc is not None else w.head())
         log.info("backfill %s done: %s", w.name, counts)
         return 0
 
+    log.info("starting: %d chains (%s), live=%s", len(watchers), ", ".join(w.name for w in watchers), a.live)
     heartbeat = float(cfg.get("heartbeat_minutes", 60)) * 60
     last_beat, failures = time.monotonic(), {}
     while True:

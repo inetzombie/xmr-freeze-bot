@@ -8,7 +8,7 @@ in the format requested by [Monero bounty #99](https://bounties.monero.social/po
 https://etherscan.io/tx/0xa8dafd10f768b389e069306cdea66b84243253f8ce6b129f5d9170a9e1243c2f
 ```
 
-Status: **v0.4**. Detection on **22 chains** (20 EVM + Tron + Solana) across 16 issuers' tokens, amounts, dedupe, and stdout,
+Status: **v0.4**. Detection on **24 chains** (20 EVM + Tron + Solana + Stellar + XRP Ledger) across 16 issuers' tokens, amounts, dedupe, and stdout,
 **Telegram**, **Nostr** and **Mastodon** outputs (Nostr/Mastodon need credentials to go live).
 
 ## What it watches
@@ -54,6 +54,8 @@ Event families (topic0 in `config.json`):
 | BNB Chain | FDUSD† `0xc5f0…6409`, USD1† `0x8d0D…0B0d` |
 | Tron | USDT `TR7N…Lj6t` (`AddedBlackList`), USDC `TEkx…rdz8` (`Blacklisted`), TUSD `TUpM…C1F4` (`Blacklisted`, true only) |
 | Solana | any SPL / Token-2022 `freezeAccount` by the allow-listed mints' freeze authorities (see below) |
+| Stellar | USDC `GA5Z…K4KZVN`, EURC `GDHU…ITNPP2` (Circle), PYUSD `GDQE…ZTU2V5` (Paxos): trustline deauthorization (see below) |
+| XRP Ledger | RLUSD `rMxC…8m5De` (Ripple), USDC `rGm7…XuWhE` (Circle): trust-line freeze / deep freeze / global freeze (see below) |
 
 Full addresses are in `config.json`.
 
@@ -93,6 +95,51 @@ including inner instructions issued through multisig programs) in those transact
   the public `api.mainnet-beta.solana.com`.
 - `--from-block` on Solana takes a slot.
 
+### Stellar
+
+Classic Stellar assets are frozen by their issuer clearing the `authorized` flag on a holder's trustline
+(`set_trust_line_flags`, or the older `allow_trust` with `authorize=false`; downgrading to
+"authorized to maintain liabilities" counts too, since the holder can then neither send nor receive). Only the issuer
+can do that, so the bot pages each issuer's `/accounts/{issuer}/operations` on Horizon (`horizon.stellar.org`, then
+`horizon.stellar.lobstr.co`). Issuer `clawback` operations are recorded as `destroy` and not posted.
+
+- Issuers (from Circle's [USDC](https://developers.circle.com/stablecoins/usdc-contract-addresses) /
+  [EURC](https://developers.circle.com/stablecoins/eurc-contract-addresses) address pages and Paxos' API docs and
+  PYUSD-on-Stellar whitepaper; all three accounts have `auth_revocable` set on-chain, home domains `circle.com` /
+  `token-metadata.paxos.com`):
+  USDC `GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN`,
+  EURC `GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2`,
+  PYUSD `GDQE7IXJ4HUHV6RQHIUPRJSEZE4DRS5WY577O2FY6YQ5LVWZ7JZTU2V5`.
+- **Amount**: the holder's current trustline balance (a deauthorized trustline can't send, so it equals the frozen
+  amount unless clawed back).
+- The cursor is the Horizon operation paging token; `--from-block` takes a ledger sequence. First start looks back
+  `start_lookback_ledgers` (720, about an hour). SDF's Horizon keeps about a year of history: no issuer freeze by
+  these three accounts exists in that window, so the unit tests use recorded real issuer operations plus
+  freeze/clawback records in Horizon's format.
+- Caveat: PYUSD also has a Soroban admin contract. A freeze done through the Stellar Asset Contract's
+  `set_authorized` from that contract would not be an operation from the issuer account and is not detected yet.
+
+### XRP Ledger
+
+Detected, for each configured issuer: `TrustSet` sent by the issuer with `tfSetFreeze` or `tfSetDeepFreeze` (posted),
+`AccountSet` with `asfGlobalFreeze` (recorded; one freeze of every holder, no single amount, so it falls under the
+unknown-amount rule), and issuer `Clawback` (recorded as `destroy`).
+
+- Issuers (from [Ripple's RLUSD docs](https://docs.ripple.com/products/stablecoin/overview/token-addresses) and
+  [Circle's USDC address page](https://developers.circle.com/stablecoins/usdc-contract-addresses); both have
+  `noFreeze` unset on-chain, domains `ripple.com` / `circle.com`):
+  RLUSD `rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De` (currency `524C5553…`), USDC `rGm7WCVp9gb4jZHWTEtGUr4dd74z2XuWhE`
+  (currency `55534443…`).
+- `account_tx` on a stablecoin issuer returns every payment rippling through it (hundreds per minute), so the bot asks
+  Clio servers (`s1`/`s2.ripple.com`) for one `tx_type` at a time and falls back to `xrplcluster.com` / `xrpl.ws`,
+  where it does one unfiltered pass if the server ignores `tx_type`.
+- **Amount**: the holder's trust-line balance from the freeze transaction's own metadata, else the current
+  `account_lines` balance.
+- Cursor: validated ledger index; first start looks back `start_lookback_ledgers` (300, about 20 minutes).
+- Real freezes in `tests/fixtures`: RLUSD deep freeze of `rnXyVQzgxZe7TR1EPzTkGj2jxH4LMJYh66` (ledger 106,382,493,
+  2026-08-18) and Circle USDC freeze + deep freeze of the same address (ledger 96,102,710, 2025-05-13). Both lines were
+  empty, so they're recorded but stay under `min_amount`.
+
 ## Run
 
 Python 3.10+, no third-party dependencies.
@@ -103,6 +150,7 @@ python -m freezebot                            # poll forever (every poll_interv
 python -m freezebot --chain ethereum --from-block 26136686 --to-block 26151692   # backfill
 python -m freezebot --chain tron --from-block 87311680 --to-block 87312845
 python -m freezebot --chain solana --from-block 459806300 --to-block 459806400   # slots
+python -m freezebot --chain xrpl --from-block 106382490 --to-block 106382495      # ledgers
 ```
 
 On first start each chain begins `start_lookback_blocks` (EVM) or `start_lookback_hours` (Tron) back. After that the
@@ -189,6 +237,8 @@ The live tests check real historical freezes:
 - USDT `BlockPlaced` on Avalanche (43,587 USDT)
 - a Circle USDC `freezeAccount` on Solana (53,617.08 USDC)
 
+- `tests/test_stellar_xrpl.py`: offline fixture tests for both watchers, plus live checks that the XRPL watcher finds
+  the real RLUSD freeze and that every Stellar/XRPL issuer can still freeze
 - `tests/test_live_expansion.py`: one real freeze per added chain/token (30 cases over 14 chains plus Tron USDC/TUSD
   and Solana EURC/AUSD), and the bytecode check for the † tokens that have never frozen anything
 
@@ -197,7 +247,7 @@ The Solana test runs without a key on the public RPC. The live suite takes about
 ## Roadmap
 
 1. Solana: optional whole-network freeze discovery (block subscription or a Helius webhook) for non-allow-listed tokens.
-2. Non-EVM issuer freezes: Stellar (USDC/EURC trustline deauthorization), XRPL (RLUSD trustline freeze), Sui/Aptos
+2. Non-EVM issuer freezes: Sui/Aptos; Stellar Soroban (SAC `set_authorized`) freezes
    (USDC deny lists), TON (USDT jetton). Each needs its own watcher.
 3. X Layer, Stable, Robinhood Chain and other new USDT0/Paxos/Circle chains once they have usable free RPCs.
 4. Daily digest, public JSON/CSV archive and a `/status` page.
