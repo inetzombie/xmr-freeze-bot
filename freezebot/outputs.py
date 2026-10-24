@@ -1,8 +1,8 @@
 """Output adapters.
 
-stdout and Telegram are implemented; Nostr and Mastodon remain credential-loading
-stubs. Nothing is posted anywhere unless --live is passed AND the adapter is
-implemented and configured. Credentials are only ever read from the environment
+stdout, Telegram, Nostr (NIP-01, stdlib BIP-340 signing) and Mastodon are
+implemented. Nothing is posted anywhere unless --live is passed AND the adapter
+is enabled and configured. Credentials are only ever read from the environment
 (or a file named by a *_FILE env var); nothing secret is stored in the repo.
 """
 import json
@@ -67,27 +67,105 @@ class StdoutOutput(Output):
         print(flush=True)
 
 
-class _StubOutput(Output):
-    def send(self, message, event):
-        if not self.live:
-            log.info("[dry-run] %s would post: %s", self.name, message.splitlines()[0])
-            return
-        if not self.configured:
-            missing = [k for k, v in self.creds.items() if not v]
-            raise RuntimeError(f"{self.name}: missing env vars {missing}")
-        raise NotImplementedError(f"{self.name} posting is not implemented yet (MVP stub)")
-
-
-class NostrOutput(_StubOutput):
-    # TODO: sign kind-1 note (NIP-01) with NOSTR_NSEC and publish to NOSTR_RELAYS (comma-separated).
+class NostrOutput(Output):
+    """Publish each message as a NIP-01 kind-1 note, signed with $NOSTR_NSEC (nsec1… or hex; or a file named by
+    $NOSTR_NSEC_FILE), to every relay in $NOSTR_RELAYS (comma-separated wss:// URLs). Succeeds if at least one
+    relay accepts the note. Tags it #monero/#xmr so it shows up in hashtag feeds."""
     name = "nostr"
     env_vars = ("NOSTR_NSEC", "NOSTR_RELAYS")
 
+    def __init__(self, live=False, publisher=None):
+        self.live = live
+        secret = read_secret("NOSTR_NSEC", "NOSTR_NSEC_FILE")
+        self.relays = [r.strip() for r in (os.environ.get("NOSTR_RELAYS") or "").split(",") if r.strip()]
+        self._seckey = None
+        if secret:
+            from .nostr import parse_seckey
+            self._seckey = parse_seckey(secret)
+        self._publish = publisher
 
-class MastodonOutput(_StubOutput):
-    # TODO: POST {MASTODON_BASE_URL}/api/v1/statuses with Bearer MASTODON_ACCESS_TOKEN.
+    @property
+    def configured(self):
+        return bool(self._seckey and self.relays)
+
+    def _missing(self):
+        return [k for k, ok in (("NOSTR_NSEC (or NOSTR_NSEC_FILE)", self._seckey), ("NOSTR_RELAYS", self.relays))
+                if not ok]
+
+    def send(self, message, event):
+        if not self.live:
+            log.info("[dry-run] nostr would post: %s", message.splitlines()[0])
+            return
+        if not self.configured:
+            raise RuntimeError(f"nostr: missing {self._missing()}")
+        from . import nostr
+        ev = nostr.make_event(message, self._seckey, tags=[["t", "monero"], ["t", "xmr"]])
+        publish = self._publish or nostr.publish
+        results = {}
+        for relay in self.relays:
+            try:
+                results[relay] = publish(relay, ev)
+            except Exception as e:  # one bad relay must not stop the others
+                results[relay] = (False, str(e)[:120])
+        if not any(ok for ok, _ in results.values()):
+            raise RuntimeError(f"nostr: no relay accepted the note: {results}")
+        return ev
+
+
+class MastodonOutput(Output):
+    """POST {MASTODON_BASE_URL}/api/v1/statuses with Bearer $MASTODON_ACCESS_TOKEN (or $MASTODON_ACCESS_TOKEN_FILE).
+    Uses an Idempotency-Key derived from the event uid so a retry never double-posts."""
     name = "mastodon"
     env_vars = ("MASTODON_BASE_URL", "MASTODON_ACCESS_TOKEN")
+
+    def __init__(self, live=False, transport=None, visibility="public"):
+        self.live = live
+        self.base = (os.environ.get("MASTODON_BASE_URL") or "").strip().rstrip("/") or None
+        self.token = read_secret("MASTODON_ACCESS_TOKEN", "MASTODON_ACCESS_TOKEN_FILE")
+        self.visibility = visibility
+        self._transport = transport or _urllib_post_auth
+
+    @property
+    def configured(self):
+        return bool(self.base and self.token)
+
+    def _missing(self):
+        return [k for k, ok in (("MASTODON_BASE_URL", self.base),
+                                ("MASTODON_ACCESS_TOKEN (or MASTODON_ACCESS_TOKEN_FILE)", self.token)) if not ok]
+
+    def send(self, message, event):
+        if not self.live:
+            log.info("[dry-run] mastodon would post: %s", message.splitlines()[0])
+            return
+        if not self.configured:
+            raise RuntimeError(f"mastodon: missing {self._missing()}")
+        data = json.dumps({"status": message, "visibility": self.visibility}).encode()
+        headers = {"Authorization": f"Bearer {self.token}",
+                   "Idempotency-Key": getattr(event, "uid", None) or str(hash(message))}
+        for attempt in range(3):
+            status, body = self._transport(f"{self.base}/api/v1/statuses", data, headers, 30)
+            if status == 200:
+                return body
+            if status in (0, 429, 500, 502, 503, 504) and attempt < 2:
+                time.sleep(2 * (attempt + 1))
+                continue
+            desc = body.get("error") if isinstance(body, dict) else body
+            raise RuntimeError(f"mastodon post failed (HTTP {status}): {desc}")
+
+
+def _urllib_post_auth(url, data, headers, timeout):
+    req = urllib.request.Request(url, data=data, method="POST",
+                                 headers={"Content-Type": "application/json", "User-Agent": USER_AGENT, **headers})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read().decode())
+        except Exception:
+            return e.code, {"error": f"HTTP {e.code}"}
+    except (urllib.error.URLError, TimeoutError) as e:
+        return 0, {"error": f"network error: {getattr(e, 'reason', e)}"}
 
 
 def _urllib_post(url, data, timeout):
