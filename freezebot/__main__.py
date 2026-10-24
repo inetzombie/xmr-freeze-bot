@@ -104,6 +104,8 @@ def main(argv=None):
         log.info("backfill %s done: %s", w.name, counts)
         return 0
 
+    heartbeat = float(cfg.get("heartbeat_minutes", 60)) * 60
+    last_beat, failures = time.monotonic(), {}
     while True:
         for w in watchers:
             try:
@@ -111,9 +113,15 @@ def main(argv=None):
                 if counts:
                     log.info("%s: %s", w.name, counts)
             except Exception as e:
+                failures[w.name] = failures.get(w.name, 0) + 1
                 log.error("%s poll failed: %s", w.name, e)
         if a.once:
             return 0
+        if heartbeat > 0 and time.monotonic() - last_beat >= heartbeat:
+            # One line per hour so a quiet log still shows every chain is advancing.
+            log.info("heartbeat: %d chains, cursors %s, poll failures since last heartbeat %s",
+                     len(watchers), {w.name: store.get_cursor(w.name) for w in watchers}, failures or "none")
+            last_beat, failures = time.monotonic(), {}
         time.sleep(cfg.get("poll_interval_seconds", 60))
 
 
