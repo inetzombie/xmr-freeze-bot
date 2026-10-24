@@ -1451,6 +1451,87 @@
         }
       ],
       "extra_watch_addresses": []
+    },
+    {
+      "name": "stellar",
+      "type": "stellar",
+      "horizon_urls": [
+        "https://horizon.stellar.org",
+        "https://horizon.stellar.lobstr.co"
+      ],
+      "explorer_tx": "https://stellar.expert/explorer/public/tx/{tx}",
+      "start_lookback_ledgers": 720,
+      "page_limit": 200,
+      "max_pages_per_poll": 50,
+      "issuers": [
+        {
+          "name": "Circle",
+          "issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+          "assets": [
+            {
+              "code": "USDC",
+              "symbol": "USDC"
+            }
+          ]
+        },
+        {
+          "name": "Circle",
+          "issuer": "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2",
+          "assets": [
+            {
+              "code": "EURC",
+              "symbol": "EURC"
+            }
+          ]
+        },
+        {
+          "name": "Paxos",
+          "issuer": "GDQE7IXJ4HUHV6RQHIUPRJSEZE4DRS5WY577O2FY6YQ5LVWZ7JZTU2V5",
+          "assets": [
+            {
+              "code": "PYUSD",
+              "symbol": "PYUSD"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "xrpl",
+      "type": "xrpl",
+      "rpc_urls": [
+        "https://s1.ripple.com",
+        "https://s2.ripple.com",
+        "https://xrplcluster.com",
+        "https://xrpl.ws"
+      ],
+      "explorer_tx": "https://livenet.xrpl.org/transactions/{tx}",
+      "start_lookback_ledgers": 300,
+      "max_ledger_range": 200,
+      "issuers": [
+        {
+          "name": "Ripple",
+          "issuer": "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De",
+          "currencies": [
+            {
+              "currency": "524C555344000000000000000000000000000000",
+              "symbol": "RLUSD",
+              "decimals": 6
+            }
+          ]
+        },
+        {
+          "name": "Circle",
+          "issuer": "rGm7WCVp9gb4jZHWTEtGUr4dd74z2XuWhE",
+          "currencies": [
+            {
+              "currency": "5553444300000000000000000000000000000000",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
     }
   ],
   "outputs": {
