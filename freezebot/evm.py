@@ -57,6 +57,17 @@ def _addr_from_word(word):
     return "0x" + word[-40:]
 
 
+def matches_filter(log_entry, event_cfg):
+    """Optional per-event filter, e.g. TrueUSD's Blacklisted(address indexed, bool) is emitted for both
+    blacklisting (true) and un-blacklisting (false): {"require_data_word": [0, 1]} keeps only data word 0 == 1."""
+    req = event_cfg.get("require_data_word")
+    if not req:
+        return True
+    idx, want = req
+    word = _word(log_entry.get("data", "0x"), int(idx))
+    return bool(word) and int(word, 16) == int(want)
+
+
 def decode_log(log_entry, event_cfg):
     """Return (holder_address, amount_raw_or_None) for a log matching event_cfg."""
     where = event_cfg.get("address_in", "topic1")
@@ -109,8 +120,12 @@ class EvmWatcher:
                 log.info("%s: shrinking getLogs range to %d blocks", self.name, step)
                 continue
             logs.sort(key=lambda l: (int(l["blockNumber"], 16), int(l["logIndex"], 16)))
-            yield [self._to_event(l) for l in logs if not l.get("removed")], end
+            yield [self._to_event(l) for l in logs if not l.get("removed") and self._wanted(l)], end
             start = end + 1
+
+    def _wanted(self, l):
+        key = (l["address"].lower(), l["topics"][0].lower())
+        return key in self.by_key and matches_filter(l, self.by_key[key][1])
 
     def _to_event(self, l):
         tok, ev = self.by_key[(l["address"].lower(), l["topics"][0].lower())]

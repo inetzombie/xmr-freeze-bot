@@ -73,6 +73,14 @@ class TronClient:
         return int(res or "0", 16)
 
 
+def _matches(e, ev_cfg):
+    """Optional {"require_result": {"1": "true"}} filter, e.g. TrueUSD's Blacklisted(address, bool)."""
+    for k, want in (ev_cfg.get("require_result") or {}).items():
+        if str((e.get("result") or {}).get(k, "")).lower() != str(want).lower():
+            return False
+    return True
+
+
 class TronWatcher:
     """Cursor for Tron is a block timestamp in ms (TronGrid filters by time)."""
 
@@ -97,13 +105,14 @@ class TronWatcher:
         for tok in self.cfg["tokens"]:
             for ev in tok["events"]:
                 for e in self.client.events(tok["address"], ev["name"], from_ts, to_ts):
-                    events.append(self._to_event(tok, ev, e))
+                    if _matches(e, ev):
+                        events.append(self._to_event(tok, ev, e))
         events.sort(key=lambda e: (e.block, e.log_index))
         yield events, to_ts
 
     def _to_event(self, tok, ev, e):
         res = e["result"]
-        holder_hex = res.get("_user") or res.get("_blackListedUser") or res.get("0")
+        holder_hex = res.get("_user") or res.get("_blackListedUser") or res.get("_account") or res.get("account") or res.get("0")
         amount, source = None, "unknown"
         if ev["kind"] == "destroy":
             raw = res.get("_balance") or res.get("1")
