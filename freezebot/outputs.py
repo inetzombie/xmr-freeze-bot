@@ -83,6 +83,7 @@ class NostrOutput(Output):
             from .nostr import parse_seckey
             self._seckey = parse_seckey(secret)
         self._publish = publisher
+        self.deterministic = False  # flux mode: same event -> same note id on every instance
 
     @property
     def configured(self):
@@ -99,7 +100,10 @@ class NostrOutput(Output):
         if not self.configured:
             raise RuntimeError(f"nostr: missing {self._missing()}")
         from . import nostr
-        ev = nostr.make_event(message, self._seckey, tags=[["t", "monero"], ["t", "xmr"]])
+        created = None
+        if self.deterministic:
+            created = int(getattr(event, "timestamp", None) or 0) or None
+        ev = nostr.make_event(message, self._seckey, tags=[["t", "monero"], ["t", "xmr"]], created_at=created)
         publish = self._publish or nostr.publish
         results = {}
         for relay in self.relays:
@@ -284,6 +288,10 @@ REGISTRY = {c.name: c for c in (StdoutOutput, NostrOutput, MastodonOutput, Teleg
 
 def build_outputs(cfg, live=False):
     outs = []
+    override = os.environ.get("FREEZEBOT_OUTPUTS")  # e.g. "telegram,nostr" replaces config enabled flags
+    if override is not None and override.strip():
+        wanted = {x.strip() for x in override.split(",") if x.strip()}
+        cfg = {n: {**cfg.get(n, {}), "enabled": n in wanted} for n in set(cfg) | wanted}
     for name, opts in cfg.items():
         if not opts.get("enabled") or name not in REGISTRY:
             continue
