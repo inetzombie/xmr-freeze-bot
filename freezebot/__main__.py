@@ -2,6 +2,7 @@
 import argparse
 import json
 import logging
+import os
 import sys
 import threading
 import time
@@ -37,7 +38,7 @@ def make_watcher(chain_cfg):
     return WATCHERS[chain_cfg["type"]](chain_cfg)
 
 
-def handle(ev, store, outputs, min_amount):
+def handle(ev, store, outputs, min_amount, guard=None):
     if store.seen(ev.uid):
         return "dup"
     if not ev.post:
@@ -52,6 +53,10 @@ def handle(ev, store, outputs, min_amount):
         log.info("below min (%s %s): %s", ev.amount, ev.symbol, ev.tx)
         return "skipped"
     msg = format_message(ev)
+    if guard is not None and not guard.should_post(ev.uid):  # waits outside the lock (standby only)
+        store.record(ev, "peer-posted", msg)
+        log.info("flux: %s already posted by another instance, skipping", ev.uid)
+        return "peer-posted"
     with _output_lock:
         if store.seen(ev.uid):  # another thread got here first
             return "dup"
@@ -61,14 +66,21 @@ def handle(ev, store, outputs, min_amount):
             except Exception as e:  # keep other outputs going
                 log.error("%s failed: %s", out.name, e)
         store.record(ev, "emitted", msg)
+    if guard is not None:
+        guard.mark(ev.uid)
     return "emitted"
 
 
-def run_chain(watcher, store, outputs, min_amount, from_cursor=None, to_cursor=None):
+def run_chain(watcher, store, outputs, min_amount, from_cursor=None, to_cursor=None, guard=None,
+              fresh_start_at_head=False):
     head = watcher.head()
     end = min(to_cursor, head) if to_cursor is not None else head
     if from_cursor is None:
         last = store.get_cursor(watcher.name)
+        if last is None and fresh_start_at_head:  # flux: a fresh instance must not backfill-post history
+            store.set_cursor(watcher.name, head)
+            log.info("flux: fresh state for %s, starting at head %s (no backfill)", watcher.name, head)
+            return {}
         from_cursor = last + 1 if last is not None else watcher.default_start(head)
         if last is not None:  # re-scan a window the source may have indexed late (dedupe by uid)
             from_cursor = max(0, from_cursor - int(getattr(watcher, "rescan_overlap", 0) or 0))
@@ -77,27 +89,42 @@ def run_chain(watcher, store, outputs, min_amount, from_cursor=None, to_cursor=N
     counts = {}
     for events, chunk_end in watcher.scan(from_cursor, end):
         for ev in events:
-            r = handle(ev, store, outputs, min_amount)
+            r = handle(ev, store, outputs, min_amount, guard)
             counts[r] = counts.get(r, 0) + 1
         if to_cursor is None:  # backfills don't move the live cursor
             store.set_cursor(watcher.name, max(chunk_end, store.get_cursor(watcher.name) or 0))
     return counts
 
 
-def poll_forever(w, interval, store, outputs, min_amount, failures, stop):
+def poll_forever(w, interval, store, outputs, min_amount, failures, stop, flux=None):
     """One thread per chain: a slow, failing, or catching-up chain never delays the others."""
     while not stop.is_set():
         t0 = time.monotonic()
         before = store.get_cursor(w.name)
         log.info("poll %s start (cursor %s)", w.name, before)
         try:
-            counts = run_chain(w, store, outputs, min_amount)
+            counts = run_chain(w, store, outputs, min_amount, **_run_kw(flux))
+            _touch_health(flux)
             log.info("poll %s done in %.1fs, cursor %s -> %s%s", w.name, time.monotonic() - t0,
                      before, store.get_cursor(w.name), f", {counts}" if counts else "")
         except Exception as e:
             failures[w.name] = failures.get(w.name, 0) + 1
             log.error("%s poll failed after %.1fs: %s", w.name, time.monotonic() - t0, e)
         stop.wait(max(1.0, interval - (time.monotonic() - t0)))
+
+
+def _run_kw(flux):
+    return {k: v for k, v in (flux or {}).items() if k in ("guard", "fresh_start_at_head")}
+
+
+def _touch_health(flux):
+    path = (flux or {}).get("health_file") if flux else os.environ.get("FREEZEBOT_HEALTH_FILE")
+    if path:
+        try:
+            with open(path, "w") as fh:
+                fh.write(str(int(time.time())))
+        except OSError as e:
+            log.warning("health file %s not writable: %s", path, e)
 
 
 def main(argv=None):
@@ -109,6 +136,7 @@ def main(argv=None):
     p.add_argument("--to-block", type=int, help="backfill end block (default: head)")
     p.add_argument("--once", action="store_true", help="one pass then exit")
     p.add_argument("--live", action="store_true", help="allow non-stdout adapters to post (default: dry-run)")
+    p.add_argument("--flux", action="store_true", help="multi-instance mode (also FREEZEBOT_FLUX=1); see docs/FLUX.md")
     p.add_argument("-v", "--verbose", action="store_true")
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO, stream=sys.stderr,
@@ -117,8 +145,30 @@ def main(argv=None):
     chains = [c for c in cfg["chains"] if not a.chain or c["name"] in a.chain]
     if a.from_block is not None and len(chains) != 1:
         p.error("--from-block needs exactly one --chain")
-    store = Store(a.db or cfg["db_path"])
+    from .flux import env_flag
+    a.live = a.live or env_flag("FREEZEBOT_LIVE")
+    flux_on = a.flux or env_flag("FREEZEBOT_FLUX")
+    db = a.db or os.environ.get("FREEZEBOT_DB") or (
+        os.path.join(os.environ["FREEZEBOT_DATA_DIR"], "freezebot.sqlite3") if os.environ.get("FREEZEBOT_DATA_DIR")
+        else cfg["db_path"])
+    store = Store(db)
     outputs = build_outputs(cfg["outputs"], live=a.live)
+    flux = None
+    if flux_on:
+        from .flux import FluxGuard
+        try:
+            guard = FluxGuard.from_env()
+        except RuntimeError as e:
+            log.error("%s", e)
+            return 2
+        if not a.live:  # dry-run never publishes claim markers
+            guard.mark = lambda uid: False
+        for o in outputs:
+            if o.name == "nostr":
+                o.deterministic = True
+        health = os.environ.get("FREEZEBOT_HEALTH_FILE") or os.path.join(os.path.dirname(os.path.abspath(db)), "health")
+        flux = {"guard": guard, "fresh_start_at_head": True, "health_file": health}
+        log.info("flux mode: rank %d (step %.0fs, %d relays)", guard.rank, guard.step, len(guard.relays))
     if a.live:
         unconfigured = [o for o in outputs if not o.configured]
         if unconfigured:
@@ -149,7 +199,7 @@ def main(argv=None):
     if a.once:
         for w in watchers:
             try:
-                counts = run_chain(w, store, outputs, min_amount)
+                counts = run_chain(w, store, outputs, min_amount, **_run_kw(flux))
                 if counts:
                     log.info("%s: %s", w.name, counts)
             except Exception as e:
@@ -161,7 +211,7 @@ def main(argv=None):
         iv = chain_interval(by_name.get(w.name, {"name": w.name}), cfg)
         log.info("chain %s polls every %.0fs", w.name, iv)
         threading.Thread(target=poll_forever, name=f"poll-{w.name}", daemon=True,
-                         args=(w, iv, store, outputs, min_amount, failures, stop)).start()
+                         args=(w, iv, store, outputs, min_amount, failures, stop, flux)).start()
     try:
         while True:
             time.sleep(heartbeat if heartbeat > 0 else 3600)

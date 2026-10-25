@@ -226,3 +226,26 @@ def publish(relay_url, event, timeout=15):
         return False, "timeout waiting for OK"
     finally:
         ws.close()
+
+
+def query(relay_url, filt, timeout=10, sub_id="freezebot"):
+    """Send ["REQ", sub, filter] and collect events until EOSE (or timeout). Returns a list of events."""
+    ws = WebSocket(relay_url, timeout=timeout)
+    try:
+        ws.send_text(json.dumps(["REQ", sub_id, filt]))
+        out, deadline = [], time.time() + timeout
+        while time.time() < deadline:
+            msg = json.loads(ws.recv_text())
+            if not msg:
+                continue
+            if msg[0] == "EVENT" and len(msg) > 2:
+                out.append(msg[2])
+            elif msg[0] in ("EOSE", "CLOSED"):
+                break
+        try:
+            ws.send_text(json.dumps(["CLOSE", sub_id]))
+        except OSError:
+            pass
+        return out
+    finally:
+        ws.close()

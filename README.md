@@ -255,3 +255,7 @@ The Solana test runs without a key on the public RPC. The live suite takes about
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+## Flux mode (multi-instance)
+
+Optional; off by default. Lets 3+ instances on Flux (runonflux.com) run without double-posting. See [docs/FLUX.md](docs/FLUX.md).
