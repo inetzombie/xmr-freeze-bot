@@ -50,7 +50,7 @@ class TronClient:
         return b["block_header"]["raw_data"]["timestamp"]
 
     def events(self, contract, event_name, min_ts, max_ts):
-        params = {"event_name": event_name, "only_confirmed": "true", "order_by": "block_timestamp,asc",
+        params = {"event_name": event_name, "order_by": "block_timestamp,asc",
                   "min_block_timestamp": min_ts, "max_block_timestamp": max_ts, "limit": 200}
         out = []
         url_path = f"/v1/contracts/{contract}/events"
@@ -91,8 +91,17 @@ class TronWatcher:
         self.client = client or TronClient(chain_cfg["api_url"], key)
 
     def head(self):
+        # Unconfirmed events are included (no only_confirmed filter) so alerts go out within
+        # seconds; Tron reorgs past a few blocks are practically unheard of (19-SR finality ~1 min).
         _, ts = self.client.now_block()
-        return ts - 60_000  # ~20 blocks behind tip for confirmation
+        return ts - int(self.cfg.get("head_lag_ms", 3_000))
+
+    @property
+    def rescan_overlap(self):
+        """Re-scan this many ms behind the cursor each poll: TronGrid's event index can lag the
+        chain head, and events it indexes late would otherwise fall behind an advanced cursor
+        and be skipped forever. Duplicates are dropped by uid in the store."""
+        return int(self.cfg.get("rescan_overlap_ms", 600_000))
 
     def default_start(self, head):
         return head - int(self.cfg.get("start_lookback_hours", 24)) * 3_600_000
