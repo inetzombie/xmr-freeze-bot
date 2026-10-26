@@ -1,0 +1,64 @@
+{
+ "_comment": "Real records from horizon.stellar.org /accounts/GA5Z.../operations (USDC issuer), fetched 2026-10-24. No issuer freeze exists in Horizon's retained history (Sep 2025 onward), so the freeze/clawback cases in tests/test_stellar_xrpl.py are built in this same record shape.",
+ "records": [
+  {
+   "id": "258738480702959617",
+   "paging_token": "258738480702959617",
+   "transaction_successful": true,
+   "source_account": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+   "type": "set_options",
+   "type_i": 5,
+   "created_at": "2025-12-10T21:43:00Z",
+   "transaction_hash": "28cae15a3a036c2ce2909a1b90f4f2d71a7a91d8d0761fd22c21611238c094b7",
+   "home_domain": "circle.com"
+  },
+  {
+   "id": "279676493515284481",
+   "paging_token": "279676493515284481",
+   "transaction_successful": true,
+   "source_account": "GAFK7XFZHMLSNV7OJTBO7BAIZA66X6QIBV5RMZZYXK4Q7ZSO52J5C3WQ",
+   "type": "payment",
+   "type_i": 1,
+   "created_at": "2026-10-24T20:01:13Z",
+   "transaction_hash": "887e7632ff886598cfdb108b5de69ed2255a3f05d973051c1462388c0268d446",
+   "asset_type": "credit_alphanum4",
+   "asset_code": "USDC",
+   "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+   "from": "GAFK7XFZHMLSNV7OJTBO7BAIZA66X6QIBV5RMZZYXK4Q7ZSO52J5C3WQ",
+   "to": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+   "amount": "2001581.4000000"
+  },
+  {
+   "id": "279633616857104385",
+   "paging_token": "279633616857104385",
+   "transaction_successful": true,
+   "source_account": "GAFK7XFZHMLSNV7OJTBO7BAIZA66X6QIBV5RMZZYXK4Q7ZSO52J5C3WQ",
+   "type": "payment",
+   "type_i": 1,
+   "created_at": "2026-10-24T06:09:18Z",
+   "transaction_hash": "7844566c0a97bebc50a8c3f73b795174abd8c47ac83c333288868cfb7fb06614",
+   "asset_type": "credit_alphanum4",
+   "asset_code": "USDC",
+   "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+   "from": "GAFK7XFZHMLSNV7OJTBO7BAIZA66X6QIBV5RMZZYXK4Q7ZSO52J5C3WQ",
+   "to": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+   "amount": "289071.0000000"
+  },
+  {
+   "id": "279628054874443777",
+   "paging_token": "279628054874443777",
+   "transaction_successful": true,
+   "source_account": "GAFK7XFZHMLSNV7OJTBO7BAIZA66X6QIBV5RMZZYXK4Q7ZSO52J5C3WQ",
+   "type": "payment",
+   "type_i": 1,
+   "created_at": "2026-10-24T04:21:23Z",
+   "transaction_hash": "dc2ca3090654d7299c9a51142fe594461f67ab9773257d6152dfae88afb7f242",
+   "asset_type": "credit_alphanum4",
+   "asset_code": "USDC",
+   "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+   "from": "GAFK7XFZHMLSNV7OJTBO7BAIZA66X6QIBV5RMZZYXK4Q7ZSO52J5C3WQ",
+   "to": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+   "amount": "2823879.2200000"
+  }
+ ]
+}
