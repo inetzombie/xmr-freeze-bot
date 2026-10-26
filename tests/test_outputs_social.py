@@ -82,7 +82,7 @@ class TestMastodonOutput(unittest.TestCase):
         with mock.patch.dict(os.environ, self.ENV):
             MastodonOutput(live=True, transport=transport).send("msg\nhttps://x", Ev())
         self.assertEqual(seen["url"], "https://mastodon.example/api/v1/statuses")
-        self.assertEqual(seen["body"], {"status": "msg\nhttps://x", "visibility": "public"})
+        self.assertEqual(seen["body"], {"status": "msg\nhttps://x", "visibility": "unlisted"})
         self.assertEqual(seen["headers"]["Idempotency-Key"], Ev.uid)
         self.assertEqual(seen["headers"]["Authorization"], "Bearer tok")
 

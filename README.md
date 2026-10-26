@@ -191,7 +191,20 @@ what it would post (dry-run).
   (no dependencies) and sent to every relay in `NOSTR_RELAYS` over a small built-in websocket client. A post counts
   as done when at least one relay answers `OK true`.
 - **Mastodon**: `POST /api/v1/statuses` with an `Idempotency-Key` derived from the event id, so a retry never
-  double-posts. Needs an access token with `write:statuses` scope.
+  double-posts. Needs an access token with `write:statuses` scope. Posting is deliberately polite (instances
+  suspend spammy bots):
+  - **Flag the account as a bot**: in Mastodon go to *Preferences → Public profile → "This is an automated
+    account"* (the `bot` flag). Do this before going live.
+  - Posts default to `unlisted` visibility (shown to followers / on the profile, not in public timelines).
+  - **Batching**: after an alert arrives, the bot waits `window_seconds` (default 120) and collects any more; two
+    or more alerts become ONE combined post within 500 chars, overflow shown as `+N more` (with `summary_link` if set).
+  - **Rate cap**: at most `max_posts_per_hour` (default 4) posts per rolling hour; excess rolls into the next
+    combined post. On HTTP 429 the bot honours `Retry-After` / `X-RateLimit-Reset` (else backs off 5 min) and
+    re-queues instead of retrying.
+  - Config (all optional, in `outputs.mastodon`):
+    `"visibility": "unlisted"`, `"summary_link": null`, `"char_limit": 500`,
+    `"batching": {"enabled": true, "window_seconds": 120, "max_posts_per_hour": 4}`.
+  - Nostr and Telegram accept the same `batching` block but it is **off by default**; Telegram stays instant.
 If `--live` is set but an enabled adapter is missing its credentials, the bot exits immediately with a clear error
 (it never posts a partial run).
 

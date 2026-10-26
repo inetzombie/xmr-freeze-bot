@@ -118,12 +118,13 @@ class MastodonOutput(Output):
     name = "mastodon"
     env_vars = ("MASTODON_BASE_URL", "MASTODON_ACCESS_TOKEN")
 
-    def __init__(self, live=False, transport=None, visibility="public"):
+    def __init__(self, live=False, transport=None, visibility="unlisted", sleep=time.sleep):
         self.live = live
         self.base = (os.environ.get("MASTODON_BASE_URL") or "").strip().rstrip("/") or None
         self.token = read_secret("MASTODON_ACCESS_TOKEN", "MASTODON_ACCESS_TOKEN_FILE")
         self.visibility = visibility
         self._transport = transport or _urllib_post_auth
+        self._sleep = sleep
 
     @property
     def configured(self):
@@ -142,15 +143,34 @@ class MastodonOutput(Output):
         data = json.dumps({"status": message, "visibility": self.visibility}).encode()
         headers = {"Authorization": f"Bearer {self.token}",
                    "Idempotency-Key": getattr(event, "uid", None) or str(hash(message))}
+        from .batching import RateLimited
         for attempt in range(3):
             status, body = self._transport(f"{self.base}/api/v1/statuses", data, headers, 30)
             if status == 200:
                 return body
-            if status in (0, 429, 500, 502, 503, 504) and attempt < 2:
-                time.sleep(2 * (attempt + 1))
+            if status == 429:
+                # Never hammer a 429: hand back to the batcher, which re-queues and backs off.
+                ra = body.get("_retry_after") if isinstance(body, dict) else None
+                raise RateLimited(ra, "mastodon rate-limited (HTTP 429)")
+            if status in (0, 500, 502, 503, 504) and attempt < 2:
+                self._sleep(5 * (attempt + 1))
                 continue
             desc = body.get("error") if isinstance(body, dict) else body
             raise RuntimeError(f"mastodon post failed (HTTP {status}): {desc}")
+
+
+def _retry_after_seconds(value):
+    if not value:
+        return None
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        pass
+    try:
+        from email.utils import parsedate_to_datetime
+        return max(0.0, parsedate_to_datetime(value).timestamp() - time.time())
+    except Exception:
+        return None
 
 
 def _urllib_post_auth(url, data, headers, timeout):
@@ -161,9 +181,22 @@ def _urllib_post_auth(url, data, headers, timeout):
             return resp.status, json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         try:
-            return e.code, json.loads(e.read().decode())
+            body = json.loads(e.read().decode())
+            if not isinstance(body, dict):
+                body = {"error": str(body)[:200]}
         except Exception:
-            return e.code, {"error": f"HTTP {e.code}"}
+            body = {"error": f"HTTP {e.code}"}
+        # Retry-After may be seconds or an HTTP date; Mastodon also sends X-RateLimit-Reset (ISO time).
+        ra = _retry_after_seconds(e.headers.get("Retry-After") if e.headers else None)
+        if ra is None and e.headers and e.headers.get("X-RateLimit-Reset"):
+            try:
+                from datetime import datetime
+                reset = datetime.fromisoformat(e.headers["X-RateLimit-Reset"].replace("Z", "+00:00"))
+                ra = max(0.0, reset.timestamp() - time.time())
+            except Exception:
+                ra = None
+        body["_retry_after"] = ra
+        return e.code, body
     except (urllib.error.URLError, TimeoutError) as e:
         return 0, {"error": f"network error: {getattr(e, 'reason', e)}"}
 
@@ -282,7 +315,20 @@ class TelegramOutput(Output):
 REGISTRY = {c.name: c for c in (StdoutOutput, NostrOutput, MastodonOutput, TelegramOutput)}
 
 
+def _batch_opts(opts, defaults):
+    """Batching options for an output; `defaults` = (enabled, window_s, max_per_hour)."""
+    b = opts.get("batching") or {}
+    return (b.get("enabled", defaults[0]), b.get("window_seconds", defaults[1]),
+            b.get("max_posts_per_hour", defaults[2]))
+
+
+# Mastodon batches by default (politeness; mastodon.social suspends spammy bots).
+# Nostr/Telegram can opt in via "batching": {"enabled": true}; off by default so Telegram stays instant.
+BATCH_DEFAULTS = {"mastodon": (True, 120, 4), "nostr": (False, 120, 0), "telegram": (False, 120, 0)}
+
+
 def build_outputs(cfg, live=False):
+    from .batching import BatchingOutput
     outs = []
     for name, opts in cfg.items():
         if not opts.get("enabled") or name not in REGISTRY:
@@ -294,7 +340,16 @@ def build_outputs(cfg, live=False):
                 kwargs["min_interval"] = opts["min_interval"]
             if "disable_web_page_preview" in opts:
                 kwargs["disable_preview"] = opts["disable_web_page_preview"]
-            outs.append(cls(live=live, **kwargs))
+            out = cls(live=live, **kwargs)
+        elif name == "mastodon":
+            out = cls(live=live, visibility=opts.get("visibility", "unlisted"))
         else:
-            outs.append(cls(live=live))
+            out = cls(live=live)
+        if name in BATCH_DEFAULTS:
+            enabled, window, cap = _batch_opts(opts, BATCH_DEFAULTS[name])
+            if enabled:
+                out = BatchingOutput(out, window=window, max_per_hour=cap,
+                                     char_limit=opts.get("char_limit", 500 if name == "mastodon" else 4000),
+                                     summary_link=opts.get("summary_link"))
+        outs.append(out)
     return outs
